@@ -14,7 +14,7 @@ class LengthMetric(Metric):
 
         if answer_tokens_ids is None:
             raise ValueError('answer_tokens_ids should not be None')
-
+        print('WOW' * 1000)
         if tokenizer is None:
             raise ValueError('tokenizer should not be None')
 
