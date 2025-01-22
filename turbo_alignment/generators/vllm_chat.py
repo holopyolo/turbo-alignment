@@ -4,6 +4,7 @@ import torch
 from transformers import PreTrainedTokenizerBase
 from vllm import LLM, SamplingParams
 from vllm.lora.request import LoRARequest
+from vllm.sampling_params import GuidedDecodingParams
 
 from turbo_alignment.dataset.chat import ChatDatasetRecord
 from turbo_alignment.generators.base import BaseGenerator
@@ -26,6 +27,15 @@ class VLLMChatGenerator(BaseGenerator[ChatDatasetRecord, ChatInferenceOutput]):
         return_logits: bool = False,
         lora_request: LoRARequest | None = None,
     ):
+        
+        schema = r'''\{
+\s*"Рассуждение"\s*:\s*".*?"\s*,
+\s*"Доспросил\?"\s*:\s*"(да|нет)"\s*,
+\s*"Объяснение"\s*:\s*".*?"\s*
+\}'''
+    
+        
+
         model.set_tokenizer(tokenizer)
         super().__init__(model, tokenizer, batch=batch)
 
@@ -41,7 +51,7 @@ class VLLMChatGenerator(BaseGenerator[ChatDatasetRecord, ChatInferenceOutput]):
         if transformers_settings.num_beams > 1:
             beam_search_params['use_beam_search'] = True
             beam_search_params['best_of'] = transformers_settings.num_beams
-
+        guided_decoding_params = GuidedDecodingParams(regex=schema)
         self._sampling_params = SamplingParams(
             n=transformers_settings.num_return_sequences,
             repetition_penalty=transformers_settings.repetition_penalty,
@@ -51,6 +61,7 @@ class VLLMChatGenerator(BaseGenerator[ChatDatasetRecord, ChatInferenceOutput]):
             skip_special_tokens=custom_generation_settings.skip_special_tokens,
             stop_token_ids=eos_token_id,
             max_tokens=transformers_settings.max_new_tokens,
+            guided_decoding=guided_decoding_params,
             **beam_search_params,
         )
         self._lora_request = lora_request
