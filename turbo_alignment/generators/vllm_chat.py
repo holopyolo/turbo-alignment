@@ -51,6 +51,7 @@ class VLLMChatGenerator(BaseGenerator[ChatDatasetRecord, ChatInferenceOutput]):
         if transformers_settings.num_beams > 1:
             beam_search_params['use_beam_search'] = True
             beam_search_params['best_of'] = transformers_settings.num_beams
+        print('!!!!!!!&&&' * 4, f'\nLOAD{schema}')
         guided_decoding_params = GuidedDecodingParams(regex=schema)
         self._sampling_params = SamplingParams(
             n=transformers_settings.num_return_sequences,
