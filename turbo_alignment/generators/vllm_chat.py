@@ -28,13 +28,20 @@ class VLLMChatGenerator(BaseGenerator[ChatDatasetRecord, ChatInferenceOutput]):
         lora_request: LoRARequest | None = None,
     ):
         
-        schema = r'''\{
-\s*"Рассуждение"\s*:\s*".*?"\s*,
-\s*"Доспросил\?"\s*:\s*"(да|нет)"\s*,
-\s*"Объяснение"\s*:\s*".*?"\s*
-\}'''
-    
-        
+        from pydantic import BaseModel
+
+        from pydantic import BaseModel, Field, constr
+        from enum import Enum
+
+        class Asking(str, Enum):
+            yes = "Да"
+            no = "Нет"
+
+        class CheckParams(BaseModel):
+            Discuss: str = Field(..., alias='Рассуждение')
+            Asked: str = Field(...,  alias='Доспросил')
+            Explained: Asking = Field(...,  alias='Объяснение')
+
 
         model.set_tokenizer(tokenizer)
         super().__init__(model, tokenizer, batch=batch)
@@ -51,8 +58,9 @@ class VLLMChatGenerator(BaseGenerator[ChatDatasetRecord, ChatInferenceOutput]):
         if transformers_settings.num_beams > 1:
             beam_search_params['use_beam_search'] = True
             beam_search_params['best_of'] = transformers_settings.num_beams
-        print('!!!!!!!&&&' * 4, f'\nLOAD{schema}')
-        guided_decoding_params = GuidedDecodingParams(regex=schema)
+        json_schema = CheckParams.model_json_schema()
+        guided_decoding_params = GuidedDecodingParams(json=json_schema)
+        print('!!!!!!!&&&' * 4, f'\nLOAD{json_schema}')
         self._sampling_params = SamplingParams(
             n=transformers_settings.num_return_sequences,
             repetition_penalty=transformers_settings.repetition_penalty,
