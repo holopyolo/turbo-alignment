@@ -42,7 +42,7 @@ class ChatGenerator(ChatGeneratorBase[ChatDatasetRecord, ChatInferenceOutput]):
             return_tensors='pt',
         )
 
-        batched_input_ids = batch['input_ids'].to(self.device)
+        batched_input_ids = batch['input_ids'].to(self.device, dtype=torch.long)
         batched_attention_mask = batch['attention_mask'].to(self.device)
 
         if parallel_states.sequence_parallel_is_initialized():
@@ -107,7 +107,7 @@ class ChatGenerator(ChatGeneratorBase[ChatDatasetRecord, ChatInferenceOutput]):
         original_record: ChatDatasetRecord,
         dataset_name: str,
     ) -> ChatInferenceOutput:
-        input_ids = torch.unsqueeze(record['input_ids'], 0).to(self.device)
+        input_ids = torch.unsqueeze(record['input_ids'], 0).to(self.device, dtype=torch.long)
         attention_mask = torch.unsqueeze(record['attention_mask'], 0).to(self.device)
 
         actual_input_ids = input_ids
