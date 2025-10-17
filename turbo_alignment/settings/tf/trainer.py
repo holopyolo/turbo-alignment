@@ -45,6 +45,7 @@ class TrainerSettings(ExtraFieldsNotAllowedBaseModel):
     dataloader_prefetch_factor: int | None = None
     dataloader_persistent_workers: bool | None = False
     dataloader_pin_memory: bool | None = True
+    dataloader_shuffle: bool = True
     gradient_checkpointing: bool = False
     gradient_checkpointing_kwargs: dict[str, Any] = {}
     neftune_noise_alpha: float | None = None

@@ -15,7 +15,7 @@ import torch
 import torch.distributed as dist
 from packaging import version
 from torch import nn
-from torch.utils.data import RandomSampler
+from torch.utils.data import RandomSampler, SequentialSampler
 from transformers.modeling_utils import unwrap_model
 from transformers.trainer import (
     SAFE_WEIGHTS_NAME,
@@ -109,9 +109,13 @@ class TrainerWithSeqP(Trainer):
             )
 
         else:
-            generator = torch.Generator()
-            generator.manual_seed(self.args.seed)
-            return RandomSampler(self.train_dataset, generator=generator)
+            if hasattr(self.args, 'dataloader_shuffle') and not self.args.dataloader_shuffle:
+                logger.info("Using sequential sampler for training. -->>")
+                return SequentialSampler(self.train_dataset)
+            else:
+                generator = torch.Generator()
+                generator.manual_seed(self.args.seed)
+                return RandomSampler(self.train_dataset, generator=generator)
 
     def _inner_training_loop(
         self, batch_size=None, args=None, resume_from_checkpoint=None, trial=None, ignore_keys_for_eval=None
