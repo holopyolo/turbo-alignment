@@ -19,6 +19,7 @@ class MetricType(str, Enum):
     KL = 'kl'
     TOOL_CALL_METRICS = 'tool_call_metrics'
     RETRIEVAL_UTILITY = 'retrieval_utility'
+    CUSTOM_LABEL = 'custom_label'
 
 
 class ElementWiseScores(ExtraFieldsNotAllowedBaseModel):

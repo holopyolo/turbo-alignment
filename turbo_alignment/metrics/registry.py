@@ -104,3 +104,8 @@ class ToolMetricsSettings(MetricSettings):
 @MetricSettingsRegistry.register(MetricType.RETRIEVAL_UTILITY)
 class RetrievalUtilitySettings(MetricSettings):
     doc_sep_symbol: str = '<doc_sep>'
+
+
+@MetricSettingsRegistry.register(MetricType.CUSTOM_LABEL)
+class CustomLabelSettings(MetricSettings):
+    ...

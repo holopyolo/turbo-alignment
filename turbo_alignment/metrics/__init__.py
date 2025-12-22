@@ -8,4 +8,5 @@ from turbo_alignment.metrics.perplexity import PerplexityMetric
 from turbo_alignment.metrics.registry import *
 from turbo_alignment.metrics.reward import RewardMetric
 from turbo_alignment.metrics.rouge import RougeMetric
+from turbo_alignment.metrics.custom_label import CustomMetric
 from turbo_alignment.metrics.self_bleu import SelfBleuMetric
