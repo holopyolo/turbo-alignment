@@ -46,20 +46,21 @@ class CustomMetric(Metric):
     def _calculate_accuracy(reference: str, prediction: str) -> float:
         reference_json = CustomMetric._load_json(reference)
         prediction_json = CustomMetric._load_json(prediction)
+        total_true_match = 0
         if reference_json and prediction_json:
             # Check if both have the same criteria keys
-            reference_criteria = {k: v for k, v in reference_json.items() if k.startswith("criteria_")}
-            prediction_criteria = {k: v for k, v in prediction_json.items() if k.startswith("criteria_")}
+            maps_value = {"true_debug": 'true'}
+            reference_criteria = {k: str(v).lower() for k, v in reference_json.items() if k.startswith("criteria_")}
+            prediction_criteria = {k: str(v).lower() for k, v in prediction_json.items() if k.startswith("criteria_")}
             
-            # Must have same number of criteria
-            if len(reference_criteria) != len(prediction_criteria):
-                return 0.0
+            reference_criteria = {k: maps_value.get(v, v) for k, v in reference_criteria.items()}
+            prediction_criteria = {k: maps_value.get(v, v) for k, v in prediction_criteria.items()}
             
             # Check each criterion matches
             for key, ref_value in reference_criteria.items():
-                if key not in prediction_criteria or prediction_criteria[key] != ref_value:
-                    return 0.0
-            return 1.0
+                if key in prediction_criteria and prediction_criteria[key] == ref_value:
+                    total_true_match += 1
+            return total_true_match / max(len(reference_criteria), 1)
         return 0.0
 
 
