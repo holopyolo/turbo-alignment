@@ -6,3 +6,4 @@ class ClassificationInferenceOutput(BaseInferenceOutput):
     id: str
     messages: list[ChatMessage]
     predicted_label: int
+    class_probabilities: list[float]

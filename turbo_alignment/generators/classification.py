@@ -25,6 +25,7 @@ class ClassificationGenerator(BaseGenerator[ClassificationDatasetRecord, Classif
             input_ids = self._collator(inputs)['input_ids']
             input_ids = input_ids.to(self.device)
             output_logits = self._model(input_ids).logits
+            probabilities = torch.softmax(output_logits, dim=1)
             classes = torch.argmax(output_logits, dim=1)
 
         return [
@@ -32,7 +33,8 @@ class ClassificationGenerator(BaseGenerator[ClassificationDatasetRecord, Classif
                 id=record.id,
                 messages=record.messages,
                 predicted_label=cl.item(),
+                class_probabilities=probs.tolist(),
                 dataset_name=dataset_name,
             )
-            for record, cl in zip(original_records, classes)
+            for record, cl, probs in zip(original_records, classes, probabilities)
         ]
