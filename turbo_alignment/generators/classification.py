@@ -32,6 +32,7 @@ class ClassificationGenerator(BaseGenerator[ClassificationDatasetRecord, Classif
             ClassificationInferenceOutput(
                 id=record.id,
                 messages=record.messages,
+                true_ground=record.label,
                 predicted_label=cl.item(),
                 class_probabilities=probs.tolist(),
                 dataset_name=dataset_name,

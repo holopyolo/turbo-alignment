@@ -59,7 +59,9 @@ def test_inference_classification(config_path: Path):
     for filename in info_file:
         filepath = inference_settings.save_path / filename
         assert filepath.is_file()
-        assert len(read_jsonl(filepath)) != 0
+        inference_records = read_jsonl(filepath)
+        assert len(inference_records) != 0
+        assert all('true_ground' in record for record in inference_records)
 
 
 def has_gpu() -> bool:

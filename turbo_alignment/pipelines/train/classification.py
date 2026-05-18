@@ -1,6 +1,8 @@
+import re
+from collections import defaultdict
 from typing import cast
 
-from torch.utils.data import Dataset
+from torch.utils.data import ConcatDataset, Dataset
 from transformers import PreTrainedTokenizerBase, TrainingArguments
 from transformers.data.data_collator import DataCollator, DataCollatorWithPadding
 from transformers.modeling_utils import PreTrainedModel
@@ -30,6 +32,30 @@ from turbo_alignment.trainers.classification import (
 from turbo_alignment.trainers.base_args import TrainingArgumentsWithSeqP
 
 logger = get_project_logger()
+
+
+def _sanitize_metric_key(value: str) -> str:
+    metric_key = re.sub(r'[^0-9a-zA-Z_]+', '_', value).strip('_')
+    return metric_key or 'dataset'
+
+
+def _get_eval_dataset_slices(val_dataset: Dataset) -> dict[str, Dataset]:
+    if not isinstance(val_dataset, ConcatDataset):
+        return {}
+
+    datasets_by_name: dict[str, list[Dataset]] = defaultdict(list)
+    for dataset in val_dataset.datasets:
+        source = getattr(dataset, 'source', None)
+        source_name = getattr(source, 'name', None)
+        if source_name is None or len(dataset) == 0:
+            continue
+
+        datasets_by_name[_sanitize_metric_key(source_name)].append(dataset)
+
+    return {
+        dataset_name: datasets[0] if len(datasets) == 1 else ConcatDataset(datasets)
+        for dataset_name, datasets in datasets_by_name.items()
+    }
 
 
 class TrainClassificationStrategy(BaseTrainStrategy[ClassificationTrainExperimentSettings, TrainingArguments]):
@@ -108,6 +134,7 @@ class TrainClassificationStrategy(BaseTrainStrategy[ClassificationTrainExperimen
             data_collator=data_collator,
             callbacks=[],
             loss_settings=experiment_settings.trainer_settings.loss_settings,
+            eval_dataset_slices=_get_eval_dataset_slices(val_dataset),
         )
 
     def _dataset_and_collator_sanity_check(  # type: ignore[override]
