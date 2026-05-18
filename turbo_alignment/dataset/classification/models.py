@@ -4,4 +4,4 @@ from turbo_alignment.dataset.chat.models import ChatMessage
 
 class ClassificationDatasetRecord(DatasetRecord):
     messages: list[ChatMessage]
-    label: int | None
+    label: int | list[int] | None

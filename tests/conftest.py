@@ -51,6 +51,11 @@ def classification_dataset_path() -> str:
 
 
 @fixture(scope='session')
+def classification_multilabel_dataset_path() -> str:
+    return 'tests/fixtures/datasets/classification/train_multilabel_classification.jsonl'
+
+
+@fixture(scope='session')
 def pair_preferences_dataset_path() -> str:
     return 'tests/fixtures/datasets/rm/train_preferences.jsonl'
 
@@ -67,6 +72,13 @@ def load_dataset_source(dataset_path: str) -> tuple[DatasetSourceSettings, list[
 @fixture(scope='session')
 def classification_dataset_source(classification_dataset_path) -> tuple[DatasetSourceSettings, list[dict]]:
     return load_dataset_source(classification_dataset_path)
+
+
+@fixture(scope='session')
+def classification_multilabel_dataset_source(
+    classification_multilabel_dataset_path,
+) -> tuple[DatasetSourceSettings, list[dict]]:
+    return load_dataset_source(classification_multilabel_dataset_path)
 
 
 @fixture(scope='session')

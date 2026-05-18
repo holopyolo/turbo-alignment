@@ -34,6 +34,29 @@ def test_classification(tokenizer_llama2, chat_dataset_settings, classification_
         )
 
 
+def test_multilabel_classification(tokenizer_llama2, chat_dataset_settings, classification_multilabel_dataset_source):
+    source, data_dicts = classification_multilabel_dataset_source
+
+    dataset_cls = DatasetRegistry.by_name(DatasetType.CLASSIFICATION).by_name(DatasetStrategy.TRAIN)
+
+    dataset_settings = ClassificationDatasetSettings(chat_settings=chat_dataset_settings)
+
+    dataset = dataset_cls(tokenizer=tokenizer_llama2, source=source, settings=dataset_settings, seed=42)
+
+    assert len(data_dicts) == len(dataset)
+
+    for data_dict, sample in zip(data_dicts, dataset):
+        record = ClassificationDatasetRecord.model_validate(data_dict)
+
+        assert record.label == sample['labels']
+        assert isinstance(sample['labels'], list)
+        assert all(label in (0, 1) for label in sample['labels'])
+
+        assert is_sample_build_from_content(
+            sample['input_ids'], [m.content for m in record.messages], tokenizer_llama2
+        )
+
+
 def test_pair_preferences(tokenizer_llama2, chat_dataset_settings, pair_preferences_dataset_source):
     # load dataset and check that samples have required fields
 

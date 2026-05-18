@@ -121,8 +121,11 @@ class TrainClassificationStrategy(BaseTrainStrategy[ClassificationTrainExperimen
         val_dataset: Dataset,
         data_collator: DataCollator,
     ):
+        problem_type = experiment_settings.model_settings.model_kwargs.get('problem_type')
         if experiment_settings.trainer_settings.loss_settings.alpha == 'auto':
-            experiment_settings.trainer_settings.loss_settings.alpha = auto_class_weights(train_dataset)
+            experiment_settings.trainer_settings.loss_settings.alpha = auto_class_weights(
+                train_dataset, problem_type=problem_type
+            )
             logger.info(f'Auto computed class weights: {experiment_settings.trainer_settings.loss_settings.alpha}')
 
         return ClassificationTrainer(
@@ -135,6 +138,7 @@ class TrainClassificationStrategy(BaseTrainStrategy[ClassificationTrainExperimen
             callbacks=[],
             loss_settings=experiment_settings.trainer_settings.loss_settings,
             eval_dataset_slices=_get_eval_dataset_slices(val_dataset),
+            problem_type=problem_type,
         )
 
     def _dataset_and_collator_sanity_check(  # type: ignore[override]

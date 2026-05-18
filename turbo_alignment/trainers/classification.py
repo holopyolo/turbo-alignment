@@ -17,6 +17,7 @@ from torch.utils.data import Dataset
 from transformers import EvalPrediction
 from transformers.trainer import speed_metrics
 
+from turbo_alignment.constants import MULTI_LABEL_CLASSIFICATION
 from turbo_alignment.settings.pipelines.train.classification import (
     ClassificationLossSettings,
 )
@@ -45,13 +46,41 @@ def _roc_auc(labels: np.ndarray, pred_scores: np.ndarray) -> float:
     )
 
 
-def compute_clf_metrics(eval_pred: EvalPrediction) -> dict[str, float]:
+def _multi_label_roc_auc(labels: np.ndarray, pred_scores: np.ndarray) -> float:
+    return _safe_metric(roc_auc_score, labels, pred_scores, average='macro')
+
+
+def _sigmoid(scores: np.ndarray) -> np.ndarray:
+    return 1 / (1 + np.exp(-scores))
+
+
+def _compute_multi_label_metrics(pred_scores: np.ndarray, labels: np.ndarray) -> dict[str, float]:
+    probabilities = _sigmoid(pred_scores)
+    predictions = (probabilities >= 0.5).astype(int)
+    labels = labels.astype(int)
+
+    metrics = {
+        'accuracy': accuracy_score(labels, predictions),
+        'specificity': float('nan'),
+        'f1-score': f1_score(labels, predictions, average='macro', zero_division=0),
+        'recall': recall_score(labels, predictions, average='macro', zero_division=0),
+        'precision': precision_score(labels, predictions, average='macro', zero_division=0),
+        'roc_auc': _multi_label_roc_auc(labels, probabilities),
+    }
+    return metrics
+
+
+def compute_clf_metrics(eval_pred: EvalPrediction, problem_type: str | None = None) -> dict[str, float]:
     pred_scores, labels = eval_pred
     if isinstance(pred_scores, tuple):
         pred_scores = pred_scores[0]
 
     pred_scores = np.asarray(pred_scores)
     labels = np.asarray(labels)
+
+    if problem_type == MULTI_LABEL_CLASSIFICATION:
+        return _compute_multi_label_metrics(pred_scores, labels)
+
     predictions = np.argmax(pred_scores, axis=1)
 
     num_labels = pred_scores.shape[1]
@@ -77,11 +106,32 @@ def compute_clf_metrics(eval_pred: EvalPrediction) -> dict[str, float]:
 
 
 def classification_loss(
-    logits: torch.Tensor, labels: torch.LongTensor, loss_settings: ClassificationLossSettings
+    logits: torch.Tensor,
+    labels: torch.LongTensor,
+    loss_settings: ClassificationLossSettings,
+    problem_type: str | None = None,
 ) -> torch.Tensor:
+    if problem_type == MULTI_LABEL_CLASSIFICATION:
+        if tuple(labels.shape) != tuple(logits.shape):
+            raise ValueError(
+                'Multi-label classification labels should have the same shape as logits: '
+                f'got labels={tuple(labels.shape)} and logits={tuple(logits.shape)}'
+            )
+
+        labels = labels.to(device=logits.device, dtype=logits.dtype)
+        pos_weight = None
+        if loss_settings.alpha is not None:
+            if loss_settings.alpha == 'auto':
+                raise ValueError('Auto class weights should be computed before multi-label loss calculation')
+            pos_weight = torch.tensor(loss_settings.alpha, device=logits.device, dtype=logits.dtype)
+
+        return F.binary_cross_entropy_with_logits(logits, labels, pos_weight=pos_weight)
+
     if loss_settings.alpha is None:
         alpha = torch.ones((logits.size(-1),), device=logits.device, dtype=logits.dtype)
     else:
+        if loss_settings.alpha == 'auto':
+            raise ValueError('Auto class weights should be computed before classification loss calculation')
         alpha = torch.tensor(loss_settings.alpha, device=logits.device, dtype=logits.dtype)
 
     ce_loss = F.cross_entropy(logits, labels, weight=alpha, reduction='none')
@@ -93,8 +143,27 @@ def classification_loss(
     return focal_loss.mean()
 
 
-def auto_class_weights(dataset: Dataset) -> list[float]:
+def _dataset_labels(dataset: Dataset) -> np.ndarray:
     labels = [dataset[i]['labels'] for i in range(len(dataset))]  # type: ignore[arg-type]
+    return np.asarray([label.tolist() if hasattr(label, 'tolist') else label for label in labels])
+
+
+def _auto_pos_weights(dataset: Dataset) -> list[float]:
+    labels = _dataset_labels(dataset).astype(float)
+    if labels.ndim != 2:
+        raise ValueError('Multi-label classification labels should be a two-dimensional binary matrix')
+
+    positives = labels.sum(axis=0)
+    negatives = labels.shape[0] - positives
+    pos_weights = np.divide(negatives, positives, out=np.ones_like(positives), where=positives != 0)
+    return pos_weights.tolist()
+
+
+def auto_class_weights(dataset: Dataset, problem_type: str | None = None) -> list[float]:
+    if problem_type == MULTI_LABEL_CLASSIFICATION:
+        return _auto_pos_weights(dataset)
+
+    labels = _dataset_labels(dataset)
     class_weights = compute_class_weight('balanced', classes=np.unique(labels), y=np.array(labels))
     return class_weights.tolist()
 
@@ -104,12 +173,13 @@ class ClassificationTrainer(CustomLossTrainer):
         self,
         loss_settings: ClassificationLossSettings,
         eval_dataset_slices: dict[str, Dataset] | None = None,
+        problem_type: str | None = None,
         **kwargs,
     ):
         self.eval_dataset_slices = eval_dataset_slices or {}
         super().__init__(
-            custom_loss=partial(classification_loss, loss_settings=loss_settings),
-            compute_metrics=compute_clf_metrics,
+            custom_loss=partial(classification_loss, loss_settings=loss_settings, problem_type=problem_type),
+            compute_metrics=partial(compute_clf_metrics, problem_type=problem_type),
             **kwargs,
         )
 

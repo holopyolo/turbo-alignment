@@ -43,6 +43,7 @@ def test_inference_chat(config_path: Path):
     'config_path',
     [
         FIXTURES_PATH / 'configs/inference/classification/base.json',
+        FIXTURES_PATH / 'configs/inference/classification/multilabel.json',
     ],
 )
 def test_inference_classification(config_path: Path):
@@ -56,12 +57,22 @@ def test_inference_classification(config_path: Path):
     assert info_save_file.is_file()
     info_file = read_json(info_save_file)
     assert len(info_file) != 0
+    model_kwargs = inference_settings.inference_settings[0].model_settings.model_kwargs
+    problem_type = model_kwargs.get('problem_type')
+    num_labels = model_kwargs.get('num_labels')
     for filename in info_file:
         filepath = inference_settings.save_path / filename
         assert filepath.is_file()
         inference_records = read_jsonl(filepath)
         assert len(inference_records) != 0
         assert all('true_ground' in record for record in inference_records)
+        if problem_type == 'multi_label_classification':
+            for record in inference_records:
+                assert isinstance(record['true_ground'], list)
+                assert isinstance(record['predicted_label'], list)
+                assert len(record['predicted_label']) == num_labels
+                assert set(record['predicted_label']).issubset({0, 1})
+                assert len(record['class_probabilities']) == num_labels
 
 
 def has_gpu() -> bool:
