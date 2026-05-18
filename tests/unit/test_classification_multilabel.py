@@ -116,4 +116,44 @@ def test_multilabel_metrics_threshold_sigmoid_at_half() -> None:
     assert metrics['recall'] == 1.0
     assert metrics['precision'] == 1.0
     assert metrics['roc_auc'] == 1.0
+    assert metrics['fpr'] == 0.0
     assert np.isnan(metrics['specificity'])
+
+
+def test_binary_classification_metrics_include_fpr() -> None:
+    logits = np.array(
+        [
+            [0.0, 2.0],
+            [2.0, 0.0],
+            [0.0, 2.0],
+            [0.0, 2.0],
+        ]
+    )
+    labels = np.array([0, 0, 0, 1])
+
+    metrics = compute_clf_metrics((logits, labels))
+
+    assert metrics['fpr'] == pytest.approx(2 / 3)
+
+
+def test_multilabel_metrics_include_macro_fpr() -> None:
+    logits = np.array(
+        [
+            [2.0, 2.0, -2.0],
+            [2.0, -2.0, 2.0],
+            [-2.0, 2.0, 2.0],
+            [-2.0, -2.0, -2.0],
+        ]
+    )
+    labels = np.array(
+        [
+            [1, 0, 0],
+            [0, 0, 1],
+            [0, 1, 0],
+            [0, 0, 0],
+        ]
+    )
+
+    metrics = compute_clf_metrics((logits, labels), problem_type=MULTI_LABEL_CLASSIFICATION)
+
+    assert metrics['fpr'] == pytest.approx(1 / 3)

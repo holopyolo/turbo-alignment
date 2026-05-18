@@ -50,6 +50,39 @@ def _multi_label_roc_auc(labels: np.ndarray, pred_scores: np.ndarray) -> float:
     return _safe_metric(roc_auc_score, labels, pred_scores, average='macro')
 
 
+def _mean_defined_rate(numerators: np.ndarray, denominators: np.ndarray) -> float:
+    rates = np.divide(
+        numerators,
+        denominators,
+        out=np.full(numerators.shape, np.nan, dtype=float),
+        where=denominators != 0,
+    )
+    defined_rates = rates[~np.isnan(rates)]
+    if len(defined_rates) == 0:
+        return float('nan')
+
+    return float(defined_rates.mean())
+
+
+def _false_positive_rate(labels: np.ndarray, predictions: np.ndarray, num_labels: int) -> float:
+    class_ids = np.array([1]) if num_labels == 2 else np.arange(num_labels)
+    label_mask = labels[:, None] == class_ids
+    prediction_mask = predictions[:, None] == class_ids
+
+    false_positives = np.logical_and(~label_mask, prediction_mask).sum(axis=0)
+    negatives = (~label_mask).sum(axis=0)
+    return _mean_defined_rate(false_positives, negatives)
+
+
+def _multi_label_false_positive_rate(labels: np.ndarray, predictions: np.ndarray) -> float:
+    label_mask = labels.astype(bool)
+    prediction_mask = predictions.astype(bool)
+
+    false_positives = np.logical_and(~label_mask, prediction_mask).sum(axis=0)
+    negatives = (~label_mask).sum(axis=0)
+    return _mean_defined_rate(false_positives, negatives)
+
+
 def _sigmoid(scores: np.ndarray) -> np.ndarray:
     return 1 / (1 + np.exp(-scores))
 
@@ -66,6 +99,7 @@ def _compute_multi_label_metrics(pred_scores: np.ndarray, labels: np.ndarray) ->
         'recall': recall_score(labels, predictions, average='macro', zero_division=0),
         'precision': precision_score(labels, predictions, average='macro', zero_division=0),
         'roc_auc': _multi_label_roc_auc(labels, probabilities),
+        'fpr': _multi_label_false_positive_rate(labels, predictions),
     }
     return metrics
 
@@ -94,6 +128,7 @@ def compute_clf_metrics(eval_pred: EvalPrediction, problem_type: str | None = No
     specificity = (
         recall_score(labels, predictions, pos_label=0, zero_division=0) if num_labels == 2 else float('nan')
     )
+    fpr = _false_positive_rate(labels, predictions, num_labels)
     metrics = {
         'accuracy': accuracy,
         'specificity': specificity,
@@ -101,6 +136,7 @@ def compute_clf_metrics(eval_pred: EvalPrediction, problem_type: str | None = No
         'recall': recall,
         'precision': precision,
         'roc_auc': roc_auc,
+        'fpr': fpr,
     }
     return metrics
 
