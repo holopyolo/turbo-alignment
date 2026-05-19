@@ -7,6 +7,7 @@ import torch
 import torch.nn.functional as F
 from sklearn.metrics import (
     accuracy_score,
+    average_precision_score,
     f1_score,
     precision_score,
     recall_score,
@@ -48,6 +49,19 @@ def _roc_auc(labels: np.ndarray, pred_scores: np.ndarray) -> float:
 
 def _multi_label_roc_auc(labels: np.ndarray, pred_scores: np.ndarray) -> float:
     return _safe_metric(roc_auc_score, labels, pred_scores, average='macro')
+
+
+def _average_precision(labels: np.ndarray, pred_scores: np.ndarray) -> float:
+    num_labels = pred_scores.shape[1]
+    if num_labels == 2:
+        return _safe_metric(average_precision_score, labels, pred_scores[:, 1])
+
+    one_hot_labels = np.eye(num_labels, dtype=int)[labels.astype(int)]
+    return _safe_metric(average_precision_score, one_hot_labels, pred_scores, average='macro')
+
+
+def _multi_label_average_precision(labels: np.ndarray, pred_scores: np.ndarray) -> float:
+    return _safe_metric(average_precision_score, labels, pred_scores, average='macro')
 
 
 def _mean_defined_rate(numerators: np.ndarray, denominators: np.ndarray) -> float:
@@ -99,6 +113,7 @@ def _compute_multi_label_metrics(pred_scores: np.ndarray, labels: np.ndarray) ->
         'recall': recall_score(labels, predictions, average='macro', zero_division=0),
         'precision': precision_score(labels, predictions, average='macro', zero_division=0),
         'roc_auc': _multi_label_roc_auc(labels, probabilities),
+        'average_precision': _multi_label_average_precision(labels, probabilities),
         'fpr': _multi_label_false_positive_rate(labels, predictions),
     }
     return metrics
@@ -125,6 +140,7 @@ def compute_clf_metrics(eval_pred: EvalPrediction, problem_type: str | None = No
     precision = precision_score(labels, predictions, average=average, zero_division=0)
     recall = recall_score(labels, predictions, average=average, zero_division=0)
     roc_auc = _roc_auc(labels, pred_scores)
+    average_precision = _average_precision(labels, pred_scores)
     specificity = (
         recall_score(labels, predictions, pos_label=0, zero_division=0) if num_labels == 2 else float('nan')
     )
@@ -136,6 +152,7 @@ def compute_clf_metrics(eval_pred: EvalPrediction, problem_type: str | None = No
         'recall': recall,
         'precision': precision,
         'roc_auc': roc_auc,
+        'average_precision': average_precision,
         'fpr': fpr,
     }
     return metrics
