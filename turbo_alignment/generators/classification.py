@@ -3,6 +3,7 @@ from typing import Any
 import torch
 from transformers import DataCollatorWithPadding, PreTrainedTokenizerBase
 
+from turbo_alignment.common.logging import get_project_logger
 from turbo_alignment.common.tf.tokenizer_padding import ensure_left_padding_for_flash_attention
 from turbo_alignment.constants import MULTI_LABEL_CLASSIFICATION
 from turbo_alignment.dataset.classification.models import ClassificationDatasetRecord
@@ -11,6 +12,8 @@ from turbo_alignment.settings.generators.outputs.classification import (
     ClassificationInferenceOutput,
 )
 
+logger = get_project_logger()
+
 
 class ClassificationGenerator(BaseGenerator[ClassificationDatasetRecord, ClassificationInferenceOutput]):
     def __init__(self, tokenizer: PreTrainedTokenizerBase, **kwargs):
@@ -18,6 +21,7 @@ class ClassificationGenerator(BaseGenerator[ClassificationDatasetRecord, Classif
 
         ensure_left_padding_for_flash_attention(tokenizer, self._model)
         self._collator = DataCollatorWithPadding(tokenizer=tokenizer, padding=True)
+        self._multi_label_mode_logged = False
 
     def _is_multi_label_classification(self) -> bool:
         models = [
@@ -29,6 +33,12 @@ class ClassificationGenerator(BaseGenerator[ClassificationDatasetRecord, Classif
         for model in models:
             config = getattr(model, 'config', None)
             if getattr(config, 'problem_type', None) == MULTI_LABEL_CLASSIFICATION:
+                if not self._multi_label_mode_logged:
+                    logger.info(
+                        'Detected multi_label_classification problem type; '
+                        'using sigmoid probabilities and 0.5 threshold for classification inference.'
+                    )
+                    self._multi_label_mode_logged = True
                 return True
 
         return False

@@ -9,7 +9,7 @@ from transformers.modeling_utils import PreTrainedModel
 from turbo_alignment.cherry_picks.classification import ClassificationCherryPickCallback
 from turbo_alignment.common.logging import get_project_logger
 from turbo_alignment.common.tf.tokenizer_padding import ensure_left_padding_for_flash_attention
-from turbo_alignment.constants import TRAINER_LOGS_FOLDER
+from turbo_alignment.constants import MULTI_LABEL_CLASSIFICATION, TRAINER_LOGS_FOLDER
 from turbo_alignment.dataset.classification.classification import (
     InferenceClassificationDataset,
 )
@@ -121,6 +121,12 @@ class TrainClassificationStrategy(BaseTrainStrategy[ClassificationTrainExperimen
         data_collator: DataCollator,
     ):
         problem_type = experiment_settings.model_settings.model_kwargs.get('problem_type')
+        if problem_type == MULTI_LABEL_CLASSIFICATION:
+            logger.info(
+                'Detected multi_label_classification problem type; '
+                'using BCEWithLogitsLoss for classification training.'
+            )
+
         if experiment_settings.trainer_settings.loss_settings.alpha == 'auto':
             experiment_settings.trainer_settings.loss_settings.alpha = auto_class_weights(
                 train_dataset, problem_type=problem_type
