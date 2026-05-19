@@ -3,6 +3,7 @@ from typing import Any
 import torch
 from transformers import DataCollatorWithPadding, PreTrainedTokenizerBase
 
+from turbo_alignment.common.tf.tokenizer_padding import ensure_left_padding_for_flash_attention
 from turbo_alignment.constants import MULTI_LABEL_CLASSIFICATION
 from turbo_alignment.dataset.classification.models import ClassificationDatasetRecord
 from turbo_alignment.generators.base import BaseGenerator
@@ -15,6 +16,7 @@ class ClassificationGenerator(BaseGenerator[ClassificationDatasetRecord, Classif
     def __init__(self, tokenizer: PreTrainedTokenizerBase, **kwargs):
         super().__init__(tokenizer=tokenizer, **kwargs)
 
+        ensure_left_padding_for_flash_attention(tokenizer, self._model)
         self._collator = DataCollatorWithPadding(tokenizer=tokenizer, padding=True)
 
     def _is_multi_label_classification(self) -> bool:
@@ -38,9 +40,8 @@ class ClassificationGenerator(BaseGenerator[ClassificationDatasetRecord, Classif
         is_multi_label = self._is_multi_label_classification()
 
         with torch.no_grad():
-            input_ids = self._collator(inputs)['input_ids']
-            input_ids = input_ids.to(self.device)
-            output_logits = self._model(input_ids).logits
+            batch = {key: value.to(self.device) for key, value in self._collator(inputs).items()}
+            output_logits = self._model(**batch).logits
             if is_multi_label:
                 probabilities = torch.sigmoid(output_logits)
                 classes = (probabilities >= 0.5).to(torch.int)

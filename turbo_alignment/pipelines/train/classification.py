@@ -1,6 +1,5 @@
 import re
 from collections import defaultdict
-from typing import cast
 
 from torch.utils.data import ConcatDataset, Dataset
 from transformers import PreTrainedTokenizerBase, TrainingArguments
@@ -9,6 +8,7 @@ from transformers.modeling_utils import PreTrainedModel
 
 from turbo_alignment.cherry_picks.classification import ClassificationCherryPickCallback
 from turbo_alignment.common.logging import get_project_logger
+from turbo_alignment.common.tf.tokenizer_padding import ensure_left_padding_for_flash_attention
 from turbo_alignment.constants import TRAINER_LOGS_FOLDER
 from turbo_alignment.dataset.classification.classification import (
     InferenceClassificationDataset,
@@ -18,9 +18,6 @@ from turbo_alignment.metrics.metric import Metric
 from turbo_alignment.metrics.registry import MetricSettingsRegistry
 from turbo_alignment.pipelines.train.base import BaseTrainStrategy
 from turbo_alignment.settings.datasets.base import DatasetStrategy
-from turbo_alignment.settings.datasets.classification import (
-    ClassificationMultiDatasetSettings,
-)
 from turbo_alignment.settings.pipelines.train.classification import (
     ClassificationTrainExperimentSettings,
 )
@@ -61,15 +58,17 @@ def _get_eval_dataset_slices(val_dataset: Dataset) -> dict[str, Dataset]:
 class TrainClassificationStrategy(BaseTrainStrategy[ClassificationTrainExperimentSettings, TrainingArguments]):
     @staticmethod
     def _get_data_collator(
-        experiment_settings: ClassificationTrainExperimentSettings,
+        _experiment_settings: ClassificationTrainExperimentSettings,
         tokenizer: PreTrainedTokenizerBase,
-        **_kwargs,
+        **kwargs,
     ) -> DataCollator:
-        dataset_settings: ClassificationMultiDatasetSettings = cast(
-            ClassificationMultiDatasetSettings, experiment_settings.train_dataset_settings
-        )
+        model = kwargs.get('model')
+        if model is not None:
+            ensure_left_padding_for_flash_attention(tokenizer, model)
+
         return DataCollatorWithPadding(  # type: ignore[return-value]
-            tokenizer=tokenizer, max_length=dataset_settings.chat_settings.max_tokens_count
+            tokenizer=tokenizer,
+            padding=True,
         )
 
     @staticmethod

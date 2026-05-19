@@ -181,7 +181,7 @@ class BaseTrainStrategy(S3Mixin, BaseStrategy, Generic[ExperimentSettingsT, Trai
                 )
             )
 
-            data_collator = self._get_data_collator(experiment_settings, self.tokenizer)
+            data_collator = self._get_data_collator(experiment_settings, self.tokenizer, model=self.model)
             if experiment_settings.trainer_settings.sequence_parallel > 1:
                 logger.info('Wrap data collator to support sequence parallelism')
                 data_collator = DataCollatorForSequenceParallism.create_with_tokenizer(  # type: ignore[assignment]
