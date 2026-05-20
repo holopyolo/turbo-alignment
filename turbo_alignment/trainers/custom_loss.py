@@ -14,6 +14,7 @@ from transformers import (
     TrainingArguments,
 )
 
+from turbo_alignment.common.numeric_debug import NumericDebugState
 from turbo_alignment.trainers.multigpu import MultiGPUCherryPicksTrainer
 
 
@@ -36,6 +37,7 @@ class CustomLossTrainer(MultiGPUCherryPicksTrainer):
         **kwargs,
     ):
         self.custom_loss = custom_loss
+        self.numeric_debug = NumericDebugState(owner=type(self).__name__)
         super().__init__(
             model=model,
             args=args,
@@ -47,6 +49,7 @@ class CustomLossTrainer(MultiGPUCherryPicksTrainer):
             callbacks=callbacks,
             **kwargs,
         )
+        self.numeric_debug.log_model_summary(self.model, args=self.args)
 
     def compute_loss(
         self,
@@ -67,5 +70,19 @@ class CustomLossTrainer(MultiGPUCherryPicksTrainer):
         logits = outputs['logits'] if isinstance(outputs, dict) else outputs[0]
 
         loss = self.custom_loss(logits, labels)
+        call_idx = self.numeric_debug.next_forward_call()
+        self.numeric_debug.log_forward(
+            call_idx=call_idx,
+            global_step=getattr(self.state, 'global_step', None),
+            inputs=inputs,
+            labels=labels,
+            logits=logits,
+            loss=loss,
+        )
 
         return (loss, outputs) if return_outputs else loss
+
+    def training_step(self, model, inputs, num_items_in_batch=None):
+        loss = super().training_step(model, inputs, num_items_in_batch)
+        self.numeric_debug.scan_gradients(model, global_step=getattr(self.state, 'global_step', None))
+        return loss

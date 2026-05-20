@@ -44,6 +44,7 @@ from transformers.trainer import (
 )
 from transformers.trainer_pt_utils import remove_dummy_checkpoint
 
+from turbo_alignment.common.numeric_debug import log_optimizer_step
 from turbo_alignment.modeling import parallel_states
 
 from .utils import create_forward_hook, create_hook
@@ -485,9 +486,26 @@ class TrainerWithSeqP(Trainer):
                             else:
                                 grad_norm = _grad_norm
 
+                        log_optimizer_step(
+                            stage='before_optimizer_step',
+                            global_step=self.state.global_step,
+                            grad_norm=grad_norm,
+                            max_grad_norm=args.max_grad_norm,
+                            learning_rate=self._get_learning_rate(),
+                            optimizer_step_was_skipped=None,
+                        )
                         self.control = self.callback_handler.on_pre_optimizer_step(args, self.state, self.control)
 
                         self.optimizer.step()
+
+                        log_optimizer_step(
+                            stage='after_optimizer_step',
+                            global_step=self.state.global_step,
+                            grad_norm=grad_norm,
+                            max_grad_norm=args.max_grad_norm,
+                            learning_rate=self._get_learning_rate(),
+                            optimizer_step_was_skipped=getattr(self.accelerator, 'optimizer_step_was_skipped', None),
+                        )
 
                         self.control = self.callback_handler.on_optimizer_step(args, self.state, self.control)
 

@@ -19,6 +19,7 @@ from transformers import EvalPrediction
 from transformers.trainer import speed_metrics
 
 from turbo_alignment.constants import MULTI_LABEL_CLASSIFICATION
+from turbo_alignment.common.numeric_debug import log_tensors
 from turbo_alignment.settings.pipelines.train.classification import (
     ClassificationLossSettings,
 )
@@ -192,6 +193,16 @@ def classification_loss(
     p_t = torch.exp(-ce_loss)  # pylint: disable=invalid-unary-operand-type
 
     focal_loss = ((1 - p_t) ** loss_settings.gamma) * ce_loss
+    log_tensors(
+        'classification_loss_components',
+        {
+            'alpha': alpha,
+            'logits': logits,
+            'ce_loss': ce_loss,
+            'p_t': p_t,
+            'focal_loss': focal_loss,
+        },
+    )
 
     return focal_loss.mean()
 
