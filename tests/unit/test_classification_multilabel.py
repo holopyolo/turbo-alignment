@@ -91,6 +91,14 @@ def test_multilabel_auto_class_weights_are_pos_weights() -> None:
     assert weights == pytest.approx([0.5, 0.5, 2.0])
 
 
+def test_auto_class_weights_detects_multilabel_labels_without_problem_type() -> None:
+    dataset = LabelsDataset(labels=[[1, 0, 1], [0, 1, 0], [1, 1, 0]])
+
+    weights = auto_class_weights(dataset)
+
+    assert weights == pytest.approx([0.5, 0.5, 2.0])
+
+
 def test_multilabel_metrics_threshold_sigmoid_at_half() -> None:
     logits = np.array(
         [

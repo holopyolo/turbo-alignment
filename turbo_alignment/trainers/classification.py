@@ -109,9 +109,9 @@ def _compute_multi_label_metrics(pred_scores: np.ndarray, labels: np.ndarray) ->
     metrics = {
         'accuracy': accuracy_score(labels, predictions),
         'specificity': float('nan'),
-        'f1-score': f1_score(labels, predictions, average='macro', zero_division=0),
-        'recall': recall_score(labels, predictions, average='macro', zero_division=0),
-        'precision': precision_score(labels, predictions, average='macro', zero_division=0),
+        'f1-score': f1_score(labels, predictions, average='micro', zero_division=0),
+        'recall': recall_score(labels, predictions, average='micro', zero_division=0),
+        'precision': precision_score(labels, predictions, average='micro', zero_division=0),
         'roc_auc': _multi_label_roc_auc(labels, probabilities),
         'average_precision': _multi_label_average_precision(labels, probabilities),
         'fpr': _multi_label_false_positive_rate(labels, predictions),
@@ -217,6 +217,9 @@ def auto_class_weights(dataset: Dataset, problem_type: str | None = None) -> lis
         return _auto_pos_weights(dataset)
 
     labels = _dataset_labels(dataset)
+    if labels.ndim == 2:
+        return _auto_pos_weights(dataset)
+
     class_weights = compute_class_weight('balanced', classes=np.unique(labels), y=np.array(labels))
     return class_weights.tolist()
 
