@@ -50,6 +50,10 @@ class CustomLossTrainer(MultiGPUCherryPicksTrainer):
             **kwargs,
         )
         self.numeric_debug.log_model_summary(self.model, args=self.args)
+        self.numeric_debug.register_gradient_hooks(
+            self.model,
+            get_global_step=lambda: getattr(self.state, 'global_step', None),
+        )
 
     def compute_loss(
         self,

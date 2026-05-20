@@ -10,6 +10,7 @@ from torch import nn
 
 
 TRUE_VALUES = {'1', 'true', 'yes', 'y', 'on'}
+_PARAM_SCAN_COUNTS: Counter[str] = Counter()
 
 
 def _env_bool(name: str, default: bool = False) -> bool:
@@ -149,18 +150,97 @@ def log_tensors(event: str, tensors: dict[str, Any], *, force: bool = False) -> 
     )
 
 
+def _optimizer_lrs(optimizer: Any) -> list[float | str]:
+    param_groups = getattr(optimizer, 'param_groups', None)
+    if param_groups is None and hasattr(optimizer, 'optimizer'):
+        param_groups = getattr(optimizer.optimizer, 'param_groups', None)
+    if param_groups is None:
+        return []
+
+    lrs = []
+    for group in param_groups[:8]:
+        lr = group.get('lr', '<missing>')
+        if torch.is_tensor(lr):
+            lr = _to_float(lr)
+        lrs.append(lr)
+    return lrs
+
+
+def scan_parameters(model: nn.Module, *, stage: str, global_step: int | None) -> None:
+    if not numeric_debug_enabled() or not _env_bool('TURBO_ALIGNMENT_NUMERIC_DEBUG_PARAMS', True):
+        return
+
+    _PARAM_SCAN_COUNTS[stage] += 1
+    scan_idx = _PARAM_SCAN_COUNTS[stage]
+    max_scans = max(0, _env_int('TURBO_ALIGNMENT_NUMERIC_DEBUG_MAX_PARAM_SCANS', 8))
+    every = max(1, _env_int('TURBO_ALIGNMENT_NUMERIC_DEBUG_PARAM_EVERY', 1))
+    if scan_idx > max_scans or scan_idx % every != 0:
+        return
+
+    checked_params = 0
+    checked_elems = 0
+    bad_param_parts: list[str] = []
+    max_bad_params = max(1, _env_int('TURBO_ALIGNMENT_NUMERIC_DEBUG_MAX_BAD_PARAMS', 12))
+    max_good_examples = max(0, _env_int('TURBO_ALIGNMENT_NUMERIC_DEBUG_MAX_GOOD_PARAM_EXAMPLES', 3))
+    good_examples: list[str] = []
+
+    with torch.no_grad():
+        for name, parameter in model.named_parameters():
+            checked_params += 1
+            checked_elems += parameter.numel()
+            values = parameter.detach()
+            if not (values.is_floating_point() or values.is_complex()):
+                continue
+
+            finite_mask = torch.isfinite(values)
+            is_finite = bool(finite_mask.all().cpu().item())
+            if is_finite:
+                if len(good_examples) < max_good_examples:
+                    good_examples.append(f'{name}:dtype={values.dtype} shape={_shape(values)}')
+                continue
+
+            finite_count = int(finite_mask.sum().cpu().item())
+            nan_count = int(torch.isnan(values).sum().cpu().item())
+            inf_count = int(torch.isinf(values).sum().cpu().item())
+            finite_suffix = ''
+            if finite_count > 0:
+                finite_values = values[finite_mask].float()
+                finite_suffix = f' finite_absmax={_format_float(_to_float(finite_values.abs().max()))}'
+
+            bad_param_parts.append(
+                f'{name}:shape={_shape(values)} dtype={values.dtype} '
+                f'finite={finite_count}/{values.numel()} nan={nan_count} inf={inf_count}{finite_suffix}'
+            )
+            if len(bad_param_parts) >= max_bad_params:
+                break
+
+    has_bad_params = len(bad_param_parts) > 0
+    debug_log(
+        'param_scan '
+        f'stage={stage} scan={scan_idx} global_step={global_step} bad={has_bad_params} '
+        f'checked_params={checked_params} checked_elems={checked_elems} '
+        f'good_examples={good_examples} bad_params={bad_param_parts}',
+        force=has_bad_params,
+    )
+
+
 class NumericDebugState:
     def __init__(self, owner: str):
         self.owner = owner
         self.forward_calls = 0
         self.grad_scans = 0
         self.model_summary_logged = False
+        self.grad_hooks_registered = False
+        self.grad_hook_logs = 0
+        self.grad_hook_handles: list[Any] = []
+        self.get_global_step = None
         self.every = max(1, _env_int('TURBO_ALIGNMENT_NUMERIC_DEBUG_EVERY', 1))
         self.max_forward_logs = max(0, _env_int('TURBO_ALIGNMENT_NUMERIC_DEBUG_MAX_FORWARD_LOGS', 20))
         self.grad_scan_enabled = _env_bool('TURBO_ALIGNMENT_NUMERIC_DEBUG_GRADS', True)
         self.grad_scan_every = max(1, _env_int('TURBO_ALIGNMENT_NUMERIC_DEBUG_GRAD_EVERY', 1))
         self.max_grad_scans = max(0, _env_int('TURBO_ALIGNMENT_NUMERIC_DEBUG_MAX_GRAD_SCANS', 20))
         self.max_bad_grad_params = max(1, _env_int('TURBO_ALIGNMENT_NUMERIC_DEBUG_MAX_BAD_GRAD_PARAMS', 8))
+        self.max_grad_hook_logs = max(0, _env_int('TURBO_ALIGNMENT_NUMERIC_DEBUG_MAX_GRAD_HOOK_LOGS', 24))
 
     @property
     def enabled(self) -> bool:
@@ -206,6 +286,48 @@ class NumericDebugState:
             f'dtypes={dict(dtype_counts)} trainable_dtypes={dict(trainable_dtype_counts)} '
             f'trainable_examples={trainable_examples} '
             f'config={";".join(config_bits)} args={";".join(arg_bits)}',
+            force=True,
+        )
+
+    def register_gradient_hooks(self, model: nn.Module, get_global_step: Any | None = None) -> None:
+        if (
+            not self.enabled
+            or self.grad_hooks_registered
+            or not _env_bool('TURBO_ALIGNMENT_NUMERIC_DEBUG_GRAD_HOOKS', True)
+            or self.max_grad_hook_logs == 0
+        ):
+            return
+
+        self.grad_hooks_registered = True
+        self.get_global_step = get_global_step
+        registered = 0
+
+        def make_hook(name: str):
+            def hook(grad: torch.Tensor) -> torch.Tensor:
+                if self.grad_hook_logs >= self.max_grad_hook_logs:
+                    return grad
+                if not torch.is_tensor(grad) or not _has_non_finite(grad):
+                    return grad
+
+                self.grad_hook_logs += 1
+                global_step = self.get_global_step() if self.get_global_step is not None else None
+                debug_log(
+                    'param_grad_hook '
+                    f'owner={self.owner} log={self.grad_hook_logs} global_step={global_step} '
+                    f'param={name} '
+                    + _tensor_stats('grad', grad),
+                )
+                return grad
+
+            return hook
+
+        for name, parameter in model.named_parameters():
+            if parameter.requires_grad:
+                self.grad_hook_handles.append(parameter.register_hook(make_hook(name)))
+                registered += 1
+
+        debug_log(
+            f'grad_hooks_registered owner={self.owner} count={registered} max_logs={self.max_grad_hook_logs}',
             force=True,
         )
 
@@ -317,6 +439,7 @@ def log_optimizer_step(
     max_grad_norm: float | None = None,
     learning_rate: Any = None,
     optimizer_step_was_skipped: bool | None = None,
+    optimizer: Any = None,
 ) -> None:
     if not numeric_debug_enabled():
         return
@@ -325,6 +448,7 @@ def log_optimizer_step(
         'optimizer '
         f'stage={stage} global_step={global_step} grad_norm={grad_norm} '
         f'max_grad_norm={max_grad_norm} learning_rate={learning_rate} '
+        f'optimizer_lrs={_optimizer_lrs(optimizer) if optimizer is not None else []} '
         f'optimizer_step_was_skipped={optimizer_step_was_skipped}',
         force=bool(optimizer_step_was_skipped),
     )
