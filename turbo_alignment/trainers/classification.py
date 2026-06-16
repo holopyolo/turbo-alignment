@@ -5,14 +5,7 @@ from functools import partial
 import numpy as np
 import torch
 import torch.nn.functional as F
-from sklearn.metrics import (
-    accuracy_score,
-    average_precision_score,
-    f1_score,
-    precision_score,
-    recall_score,
-    roc_auc_score,
-)
+from sklearn.metrics import average_precision_score, precision_score, recall_score
 from sklearn.utils import compute_class_weight
 from torch.utils.data import Dataset
 from transformers import EvalPrediction
@@ -30,25 +23,6 @@ def _safe_metric(metric_fn, *args, **kwargs) -> float:
         return float(metric_fn(*args, **kwargs))
     except ValueError:
         return float('nan')
-
-
-def _roc_auc(labels: np.ndarray, pred_scores: np.ndarray) -> float:
-    num_labels = pred_scores.shape[1]
-    if num_labels == 2:
-        return _safe_metric(roc_auc_score, labels, pred_scores[:, 1])
-
-    return _safe_metric(
-        roc_auc_score,
-        labels,
-        pred_scores,
-        average='macro',
-        multi_class='ovo',
-        labels=np.arange(num_labels),
-    )
-
-
-def _multi_label_roc_auc(labels: np.ndarray, pred_scores: np.ndarray) -> float:
-    return _safe_metric(roc_auc_score, labels, pred_scores, average='macro')
 
 
 def _average_precision(labels: np.ndarray, pred_scores: np.ndarray) -> float:
@@ -107,12 +81,8 @@ def _compute_multi_label_metrics(pred_scores: np.ndarray, labels: np.ndarray) ->
     labels = labels.astype(int)
 
     metrics = {
-        'accuracy': accuracy_score(labels, predictions),
-        'specificity': float('nan'),
-        'f1-score': f1_score(labels, predictions, average='micro', zero_division=0),
         'recall': recall_score(labels, predictions, average='micro', zero_division=0),
         'precision': precision_score(labels, predictions, average='micro', zero_division=0),
-        'roc_auc': _multi_label_roc_auc(labels, probabilities),
         'average_precision': _multi_label_average_precision(labels, probabilities),
         'fpr': _multi_label_false_positive_rate(labels, predictions),
     }
@@ -135,23 +105,13 @@ def compute_clf_metrics(eval_pred: EvalPrediction, problem_type: str | None = No
     num_labels = pred_scores.shape[1]
     average = 'binary' if num_labels == 2 else 'macro'
 
-    accuracy = accuracy_score(labels, predictions)
-    f_score = f1_score(labels, predictions, average=average, zero_division=0)
     precision = precision_score(labels, predictions, average=average, zero_division=0)
     recall = recall_score(labels, predictions, average=average, zero_division=0)
-    roc_auc = _roc_auc(labels, pred_scores)
     average_precision = _average_precision(labels, pred_scores)
-    specificity = (
-        recall_score(labels, predictions, pos_label=0, zero_division=0) if num_labels == 2 else float('nan')
-    )
     fpr = _false_positive_rate(labels, predictions, num_labels)
     metrics = {
-        'accuracy': accuracy,
-        'specificity': specificity,
-        'f1-score': f_score,
         'recall': recall,
         'precision': precision,
-        'roc_auc': roc_auc,
         'average_precision': average_precision,
         'fpr': fpr,
     }

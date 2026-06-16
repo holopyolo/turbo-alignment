@@ -1,4 +1,5 @@
 from abc import ABC
+from collections import Counter
 from pathlib import Path
 from typing import Any, overload
 
@@ -23,6 +24,23 @@ from turbo_alignment.settings.datasets.classification import (
 logger = get_project_logger()
 
 
+def _classification_label_distribution(records: list[dict[str, Any]]) -> dict[int, int]:
+    distribution: Counter[int] = Counter()
+    for record in records:
+        label = record.get('labels')
+        if label is None:
+            continue
+        if hasattr(label, 'tolist'):
+            label = label.tolist()
+
+        if isinstance(label, list):
+            label = int(sum(label) > 0)
+
+        distribution[int(label)] += 1
+
+    return dict(sorted(distribution.items()))
+
+
 class ClassificationDataset(AlignmentDataset[ClassificationDatasetRecord], ABC):
     def __init__(
         self,
@@ -43,6 +61,19 @@ class ClassificationDataset(AlignmentDataset[ClassificationDatasetRecord], ABC):
         self.settings: ClassificationDatasetSettings = settings
 
         self._read()
+        self._log_loaded_dataset_stats()
+
+    def _log_loaded_dataset_stats(self) -> None:
+        logger.info(f'Classification dataset {self.source.name} loaded: {len(self.records)} samples')
+
+        label_distribution = _classification_label_distribution(self.records)
+        if label_distribution:
+            logger.info(
+                f'Classification dataset {self.source.name} label distribution: {label_distribution} '
+                '(list labels are counted as int(sum(label) > 0))'
+            )
+        else:
+            logger.info(f'Classification dataset {self.source.name} label distribution: no labels')
 
     def _encode(self, records: list[ClassificationDatasetRecord], inference: bool) -> list[dict[str, Any] | None]:
         chat_records: list[ChatDatasetRecord] = [

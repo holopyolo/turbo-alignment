@@ -1,4 +1,10 @@
+from types import SimpleNamespace
+
 from tests.utils import is_sample_build_from_content
+from turbo_alignment.dataset.classification.classification import (
+    ClassificationDataset,
+    _classification_label_distribution,
+)
 from turbo_alignment.dataset.classification.models import ClassificationDatasetRecord
 from turbo_alignment.dataset.pair_preferences.models import PairPreferenceRecord
 from turbo_alignment.dataset.registry import DatasetRegistry
@@ -9,6 +15,19 @@ from turbo_alignment.settings.datasets.classification import (
 from turbo_alignment.settings.datasets.pair_preference import (
     PairPreferenceDatasetSettings,
 )
+
+
+def test_classification_label_distribution_collapses_list_labels():
+    assert _classification_label_distribution(
+        [
+            {'labels': 0},
+            {'labels': 1},
+            {'labels': [0, 0, 0]},
+            {'labels': [0, 1, 0]},
+            {'labels': [1, 0, 1]},
+            {'labels': None},
+        ]
+    ) == {0: 2, 1: 3}
 
 
 def test_classification(tokenizer_llama2, chat_dataset_settings, classification_dataset_source):
@@ -32,6 +51,34 @@ def test_classification(tokenizer_llama2, chat_dataset_settings, classification_
         assert is_sample_build_from_content(
             sample['input_ids'], [m.content for m in record.messages], tokenizer_llama2
         )
+
+
+def test_classification_logs_loaded_samples_and_label_distribution(
+    chat_dataset_settings, classification_dataset_source, monkeypatch
+):
+    messages: list[str] = []
+    monkeypatch.setattr(
+        'turbo_alignment.dataset.classification.classification.logger',
+        SimpleNamespace(info=messages.append),
+    )
+    monkeypatch.setattr(
+        ClassificationDataset,
+        '_encode',
+        lambda self, records, inference: [{'labels': record.label} for record in records],
+    )
+
+    source, data_dicts = classification_dataset_source
+
+    dataset_cls = DatasetRegistry.by_name(DatasetType.CLASSIFICATION).by_name(DatasetStrategy.TRAIN)
+    dataset_settings = ClassificationDatasetSettings(chat_settings=chat_dataset_settings)
+
+    dataset_cls(tokenizer=SimpleNamespace(), source=source, settings=dataset_settings, seed=42)
+
+    assert f'Classification dataset {source.name} loaded: {len(data_dicts)} samples' in messages
+    assert (
+        f'Classification dataset {source.name} label distribution: {{0: 5, 1: 4}} '
+        '(list labels are counted as int(sum(label) > 0))'
+    ) in messages
 
 
 def test_multilabel_classification(tokenizer_llama2, chat_dataset_settings, classification_multilabel_dataset_source):
