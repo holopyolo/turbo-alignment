@@ -57,6 +57,11 @@ def test_inference_classification(config_path: Path):
     assert info_save_file.is_file()
     info_file = read_json(info_save_file)
     assert len(info_file) != 0
+    source_records = {}
+    for source in inference_settings.dataset_settings.sources:
+        assert source.records_path is not None
+        source_records.update({str(record['id']): record for record in read_jsonl(source.records_path)})
+
     model_kwargs = inference_settings.inference_settings[0].model_settings.model_kwargs
     problem_type = model_kwargs.get('problem_type')
     num_labels = model_kwargs.get('num_labels')
@@ -66,6 +71,14 @@ def test_inference_classification(config_path: Path):
         inference_records = read_jsonl(filepath)
         assert len(inference_records) != 0
         assert all('true_ground' in record for record in inference_records)
+        for record in inference_records:
+            source_record = source_records[record['id']]
+            for passthrough_field in ('categories', 'labels'):
+                if passthrough_field in source_record:
+                    assert record[passthrough_field] == source_record[passthrough_field]
+                else:
+                    assert passthrough_field not in record
+
         if problem_type == 'multi_label_classification':
             for record in inference_records:
                 assert isinstance(record['true_ground'], list)

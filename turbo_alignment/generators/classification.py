@@ -4,7 +4,9 @@ import torch
 from transformers import DataCollatorWithPadding, PreTrainedTokenizerBase
 
 from turbo_alignment.common.logging import get_project_logger
-from turbo_alignment.common.tf.tokenizer_padding import ensure_left_padding_for_flash_attention
+from turbo_alignment.common.tf.tokenizer_padding import (
+    ensure_left_padding_for_flash_attention,
+)
 from turbo_alignment.constants import MULTI_LABEL_CLASSIFICATION
 from turbo_alignment.dataset.classification.models import ClassificationDatasetRecord
 from turbo_alignment.generators.base import BaseGenerator
@@ -66,6 +68,8 @@ class ClassificationGenerator(BaseGenerator[ClassificationDatasetRecord, Classif
                 true_ground=record.label,
                 predicted_label=cl.tolist() if is_multi_label else cl.item(),
                 class_probabilities=probs.tolist(),
+                categories=record.categories,
+                labels=record.labels,
                 dataset_name=dataset_name,
             )
             for record, cl, probs in zip(original_records, classes, probabilities)

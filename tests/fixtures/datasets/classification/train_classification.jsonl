@@ -1,4 +1,4 @@
-{"id": "0", "messages": [{"role": "user", "content": "hi"}, {"role": "bot", "content": "hi"}, {"role": "user", "content": "how are you"}], "label": 0}
+{"id": "0", "messages": [{"role": "user", "content": "hi"}, {"role": "bot", "content": "hi"}, {"role": "user", "content": "how are you"}], "label": 0, "categories": {"source": ["binary", "smoke"], "priority": 7}, "labels": {"external": ["alpha", 13], "ok": true}}
 {"id": "1", "messages": [{"role": "user", "content": "hi"}, {"role": "bot", "content": "hi"}, {"role": "user", "content": "how are you"}, {"role": "bot", "content": "good"}, {"role": "bot", "content": "hi"}], "label": 1}
 {"id": "2", "messages": [{"role": "user", "content": "hi"}, {"role": "bot", "content": "hi"}, {"role": "user", "content": "how are you"}, {"role": "bot", "content": "bad"}], "label": 0}
 {"id": "3", "messages": [{"role": "user", "content": "hi"}, {"role": "bot", "content": "hi"}, {"role": "user", "content": "how are you"}], "label": 0}
